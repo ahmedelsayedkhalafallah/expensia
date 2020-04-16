@@ -1,7 +1,12 @@
 import 'package:flutter/material.dart';
+import 'package:intl/intl.dart' as intl;
 import 'ExpenseType.dart';
 import 'ExpenseData.dart';
 import "package:configurable_expansion_tile/configurable_expansion_tile.dart";
+import "DatabaseHelper.dart";
+import 'package:flutter/services.dart';
+import 'RegExInputFormatter.dart';
+
 
 void main() => runApp(new MyApp());
 
@@ -42,16 +47,31 @@ class MyHomePage extends StatefulWidget {
 }
 
 class _MyHomePageState extends State<MyHomePage> {
+
+
+  final dbHelper = DatabaseHelper.instance;
+  static DateTime now = new DateTime.now();
+  var formattedDate ;
+  double priceInput = 0.0;
+  String descriptionInput = " ";
+  final _amountValidator = RegExInputFormatter.withRegex('^\$|^(0|([1-9][0-9]{0,}))(\\.[0-9]{0,})?\$');
   ExpenseType Drop_value =
       new ExpenseType("transportation", Icons.directions_bus);
   List<ExpenseType> DropDownValues = new List<ExpenseType>();
   void onChange_Drop(ExpenseType value) {
+    todayExpenses.clear();
+    weekExpenses.clear();
     setState(() {
       Drop_value = value;
     });
   }
-
+  List allRecords;
+  List<ExpenseData>allExpenses = new List<ExpenseData>();
   List<ExpenseData> todayExpenses = new List<ExpenseData>();
+  List<DateTime> weekExpenses = new List<DateTime>();
+  List<String> weeksExpenses = new List<String>();
+  List<String> monthExpensesDetails = new List<String>();
+  List<String> yearExpenses = new List<String>();
   Map<String, IconData> typesIcons = new Map<String, IconData>();
 
   @override
@@ -63,13 +83,10 @@ class _MyHomePageState extends State<MyHomePage> {
       "shopping": Icons.shopping_basket,
       "others": Icons.menu,
     });
-    todayExpenses.addAll([
-      ExpenseData(5.0, "Housary -> Ramses", DateTime.now(), "transportation"),
-      ExpenseData(5.0, "Ramses -> Nasr City", DateTime.now(), "transportation"),
-      ExpenseData(5.0, "Fetar: Foul & Batates", DateTime.now(), "food"),
-      ExpenseData(5.0, "Ghadaa(Koushary)", DateTime.now(), "food"),
-      ExpenseData(5.0, "3asser(qasab)", DateTime.now(), "drink"),
-    ]);
+
+    yearExpenses.addAll(["", "", "", "", "", "", "", "", ""]);
+    monthExpensesDetails.addAll(["", "", ""]);
+    weeksExpenses.addAll([" ", " ", " "]);
     DropDownValues.addAll([
       ExpenseType("transportation", Icons.directions_bus),
       ExpenseType("food", Icons.fastfood),
@@ -90,7 +107,14 @@ class _MyHomePageState extends State<MyHomePage> {
     // The Flutter framework has been optimized to make rerunning build methods
     // fast, so that you can just rebuild anything that needs updating rather
     // than having to individually change instances of widgets.
-    return DefaultTabController(
+    return FutureBuilder(
+      builder: (context, projectSnap) {
+        if (projectSnap.connectionState == ConnectionState.none &&
+            projectSnap.hasData == null) {
+          //print('project snapshot data is: ${projectSnap.data}');
+          return Container();
+        }
+        return DefaultTabController(
       length: 3,
       child: Scaffold(
         appBar: new AppBar(
@@ -124,6 +148,7 @@ class _MyHomePageState extends State<MyHomePage> {
           ),
         ),
         body: TabBarView(children: [
+
           Container(
             child: new SingleChildScrollView(
               // the main content container
@@ -212,7 +237,14 @@ class _MyHomePageState extends State<MyHomePage> {
                                         width: 150.0,
                                         child: new Padding(
                                           padding: EdgeInsets.all(0.0),
-                                          child: new TextField(
+                                          child: new TextFormField(
+                                            inputFormatters: [_amountValidator],
+                                            maxLines: 1,
+                                            keyboardType: TextInputType.numberWithOptions(signed: false,decimal: true),
+                                            onChanged: (text) {
+                                        priceInput = double.parse(text);
+                                        print("$priceInput");
+                                        },
                                             decoration: new InputDecoration(
                                                 enabledBorder:
                                                     OutlineInputBorder(
@@ -344,6 +376,11 @@ class _MyHomePageState extends State<MyHomePage> {
                                       padding: EdgeInsets.only(
                                           left: 8.0, right: 6.0, bottom: 16.0),
                                       child: new TextField(
+                                        maxLines: 1,
+                                        onChanged: (text) {
+                                          descriptionInput = text;
+                                          print("$descriptionInput");
+                                        },
                                         decoration: new InputDecoration(
                                             enabledBorder: OutlineInputBorder(
                                                 borderSide: BorderSide(
@@ -386,7 +423,7 @@ class _MyHomePageState extends State<MyHomePage> {
                                       padding: const EdgeInsets.only(
                                           left: 12.0, bottom: 16.0, right: 8.0),
                                       child: new RaisedButton(
-                                        onPressed: () {},
+                                        onPressed: () {_insert();},
                                         color: Colors.black,
                                         textColor: Colors.white,
                                         child: const Text(
@@ -424,11 +461,13 @@ class _MyHomePageState extends State<MyHomePage> {
                       margin: const EdgeInsets.only(
                           left: 20.0, right: 20.0, bottom: 1.0),
                       //Current date and time container
-                      child: ListView.builder(
+                      child:  ListView.builder(
                         scrollDirection: Axis.vertical,
                         shrinkWrap: true,
+                        physics: NeverScrollableScrollPhysics(),
                         itemBuilder: (context, position) {
-                          return new Card(margin: EdgeInsets.only(bottom: 12.0),
+                          return new Card(
+                            margin: EdgeInsets.only(bottom: 12.0),
                             elevation: 0.0,
                             child: Row(
                               mainAxisSize: MainAxisSize.max,
@@ -451,53 +490,61 @@ class _MyHomePageState extends State<MyHomePage> {
                                         ),
                                       ),
                                     ),
-                                    Padding(padding: EdgeInsets.only(top: 4.0),child: Column(
-                                      mainAxisSize: MainAxisSize.max,
-                                      mainAxisAlignment:
-                                      MainAxisAlignment.spaceBetween,
-                                      crossAxisAlignment:
-                                      CrossAxisAlignment.start,
-                                      children: <Widget>[
-                                        Text(
-                                          todayExpenses
-                                              .elementAt(position)
-                                              .type,
-                                          style: TextStyle(fontSize: 16.0),
-                                        ),
-                                        SizedBox(height: 8.0,),
-                                        Text(
-                                          todayExpenses
-                                              .elementAt(position)
-                                              .description,
-                                          style: TextStyle(
-                                              color: Colors.black26,
-                                              fontSize: 10.0),
-                                        )
-                                      ],
-                                    ),)
+                                    Padding(
+                                      padding: EdgeInsets.only(top: 4.0),
+                                      child: Column(
+                                        mainAxisSize: MainAxisSize.max,
+                                        mainAxisAlignment:
+                                            MainAxisAlignment.spaceBetween,
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.start,
+                                        children: <Widget>[
+                                          Text(
+                                            todayExpenses
+                                                .elementAt(position)
+                                                .type,
+                                            style: TextStyle(fontSize: 16.0),
+                                          ),
+                                          SizedBox(
+                                            height: 8.0,
+                                          ),
+                                          Text(
+                                            todayExpenses
+                                                .elementAt(position)
+                                                .description,
+                                            style: TextStyle(
+                                                color: Colors.black26,
+                                                fontSize: 10.0),
+                                          )
+                                        ],
+                                      ),
+                                    )
                                   ],
                                 ),
-                                Padding(padding: EdgeInsets.only(top: 6.0),
+                                Padding(
+                                  padding: EdgeInsets.only(top: 6.0),
                                   child: Text(
-                                    "${todayExpenses.elementAt(position).amount} EGP"),)
+                                      "${todayExpenses.elementAt(position).amount} EGP"),
+                                )
                               ],
                             ),
                           );
                         },
                         itemCount: todayExpenses.length,
-                      ),
+                      )
                     ),
                   )
                 ],
               ),
             ),
           ),
+
+
           Container(
             child: new SingleChildScrollView(
               // the main content container
               child: new Column(
                 children: <Widget>[
-
                   //month total
                   Padding(
                     padding: const EdgeInsets.all(1.0),
@@ -568,130 +615,848 @@ class _MyHomePageState extends State<MyHomePage> {
                     ),
                   ),
 
-                  //days expenses
-                  Padding(padding: EdgeInsets.only(left: 16.0,right: 16.0),
-                  child: Container(
-                    decoration: new BoxDecoration(boxShadow: [
-                      new BoxShadow(
-                        color: Colors.black12,
-                        blurRadius: 2.0,
-                        offset: new Offset(0.0, 0.0),
-                      ),
-                    ]),
+                  // days expenses
+                  Padding(
+                    padding: EdgeInsets.all(1.0),
+                    child: new Container(
+                      margin: const EdgeInsets.all(1.0),
+                      //Current date and time container
+                      child: ListView.builder(
+                        scrollDirection: Axis.vertical,
+                        shrinkWrap: true,
+                        physics: const NeverScrollableScrollPhysics(),
+                        itemBuilder: (context, position) {
+                          return Padding(
+                            padding: const EdgeInsets.all(1.0),
+                            child: new Container(
+                              margin: EdgeInsets.only(
+                                  left: 20.0,
+                                  right: 20.0,
+                                  top: 20.0,
+                                  bottom: 0.0),
 
-                    child:Card(
-                      child:
-                      ConfigurableExpansionTile(
-                        header: SizedBox(height: 30.0,child: Padding(
-                        padding: const EdgeInsets.all(0.0),
-                        child: new Container(
-                          //Current date and time container
-                          child: new Row(
-                            mainAxisSize: MainAxisSize.max,
-                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                            children: <Widget>[
-                              new Text(
-                                "Hello",
-                                textAlign: TextAlign.left,
-                                style: new TextStyle(
-                                    color: Colors.black,
-                                    fontWeight: FontWeight.w500,
-                                    fontSize: 16.0),
-                                textDirection: TextDirection.ltr,
-                              ),
-                              new Text(
-                                "Hello",
-                                textAlign: TextAlign.right,
-                                style: new TextStyle(
-                                    color: Colors.black,
-                                    fontWeight: FontWeight.w500,
-                                    fontSize: 16.0),
-                                textDirection: TextDirection.ltr,
-                              ),
-                            ],
-                          ),
-                        ),
-                      ),),
-                        children: <Widget>[
-                          Container(
-                            child: Padding(
-                              padding: EdgeInsets.only(left: 12.0,right: 12.0),
-                              child: ListView.builder(
-                                scrollDirection: Axis.vertical,
-                                shrinkWrap: true,
-                                itemBuilder: (context, position) {
-                                  return new Card(margin: EdgeInsets.only(bottom: 12.0),
-                                    elevation: 0.0,
-                                    child: Row(
-                                      mainAxisSize: MainAxisSize.max,
-                                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                      crossAxisAlignment: CrossAxisAlignment.start,
-                                      children: <Widget>[
-                                        Row(
-                                          mainAxisSize: MainAxisSize.min,
-                                          mainAxisAlignment: MainAxisAlignment.center,
-                                          crossAxisAlignment: CrossAxisAlignment.start,
-                                          children: <Widget>[
-                                            Padding(
-                                              padding: EdgeInsets.only(right: 8.0),
-                                              child: SizedBox(
-                                                child: Icon(
-                                                  typesIcons[todayExpenses
-                                                      .elementAt(position)
-                                                      .type],
-                                                  size: 36.0,
-                                                ),
-                                              ),
-                                            ),
-                                            Padding(padding: EdgeInsets.only(top: 4.0),child: Column(
+                              //the addition shadow handler
+                              child: new Card(
+                                color: Colors.white,
+                                // the shadow size can be controled from the card margin value
+                                margin: EdgeInsets.all(1.0),
+                                shape: new RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(4.0)),
+
+                                //the addition form container
+                                child: new Column(
+                                  mainAxisSize: MainAxisSize.max,
+                                  children: <Widget>[
+                                    ConfigurableExpansionTile(
+                                      header: SizedBox(
+                                        height: 30.0,
+                                        child: Padding(
+                                          padding: const EdgeInsets.all(0.0),
+                                          child: new Container(
+                                            //Current date and time container
+                                            child: new Row(
                                               mainAxisSize: MainAxisSize.max,
                                               mainAxisAlignment:
-                                              MainAxisAlignment.spaceBetween,
-                                              crossAxisAlignment:
-                                              CrossAxisAlignment.start,
+                                                  MainAxisAlignment
+                                                      .spaceBetween,
                                               children: <Widget>[
-                                                Text(
-                                                  todayExpenses
-                                                      .elementAt(position)
-                                                      .type,
-                                                  style: TextStyle(fontSize: 16.0),
+                                                new Text(
+                                                  "Hello",
+                                                  textAlign: TextAlign.left,
+                                                  style: new TextStyle(
+                                                      color: Colors.black,
+                                                      fontWeight:
+                                                          FontWeight.w500,
+                                                      fontSize: 16.0),
+                                                  textDirection:
+                                                      TextDirection.ltr,
                                                 ),
-                                                SizedBox(height: 8.0,),
-                                                Text(
-                                                  todayExpenses
-                                                      .elementAt(position)
-                                                      .description,
-                                                  style: TextStyle(
-                                                      color: Colors.black26,
-                                                      fontSize: 10.0),
-                                                )
+                                                SizedBox(
+                                                  width: 200.0,
+                                                ),
+                                                new Text(
+                                                  "Hello",
+                                                  textAlign: TextAlign.right,
+                                                  style: new TextStyle(
+                                                      color: Colors.black,
+                                                      fontWeight:
+                                                          FontWeight.w500,
+                                                      fontSize: 16.0),
+                                                  textDirection:
+                                                      TextDirection.ltr,
+                                                ),
+                                                Icon(Icons.arrow_drop_down),
                                               ],
-                                            ),)
-                                          ],
+                                            ),
+                                          ),
                                         ),
-                                        Padding(padding: EdgeInsets.only(top: 6.0),
-                                          child: Text(
-                                              "${todayExpenses.elementAt(position).amount} EGP"),)
+                                      ),
+                                      children: <Widget>[
+                                        Container(
+                                          child: Padding(
+                                            padding: EdgeInsets.only(
+                                                left: 12.0, right: 12.0),
+                                            child: ListView.builder(
+                                              scrollDirection: Axis.vertical,
+                                              shrinkWrap: true,
+                                              physics:
+                                                  NeverScrollableScrollPhysics(),
+                                              itemBuilder: (context, position) {
+                                                return new Card(
+                                                  margin: EdgeInsets.only(
+                                                      bottom: 12.0),
+                                                  elevation: 0.0,
+                                                  child: Row(
+                                                    mainAxisSize:
+                                                        MainAxisSize.max,
+                                                    mainAxisAlignment:
+                                                        MainAxisAlignment
+                                                            .spaceBetween,
+                                                    crossAxisAlignment:
+                                                        CrossAxisAlignment
+                                                            .start,
+                                                    children: <Widget>[
+                                                      Row(
+                                                        mainAxisSize:
+                                                            MainAxisSize.min,
+                                                        mainAxisAlignment:
+                                                            MainAxisAlignment
+                                                                .center,
+                                                        crossAxisAlignment:
+                                                            CrossAxisAlignment
+                                                                .start,
+                                                        children: <Widget>[
+                                                          Padding(
+                                                            padding:
+                                                                EdgeInsets.only(
+                                                                    right: 8.0),
+                                                            child: SizedBox(
+                                                              child: Icon(
+                                                                typesIcons[todayExpenses
+                                                                    .elementAt(
+                                                                        position)
+                                                                    .type],
+                                                                size: 36.0,
+                                                              ),
+                                                            ),
+                                                          ),
+                                                          Padding(
+                                                            padding:
+                                                                EdgeInsets.only(
+                                                                    top: 4.0),
+                                                            child: Column(
+                                                              mainAxisSize:
+                                                                  MainAxisSize
+                                                                      .max,
+                                                              mainAxisAlignment:
+                                                                  MainAxisAlignment
+                                                                      .spaceBetween,
+                                                              crossAxisAlignment:
+                                                                  CrossAxisAlignment
+                                                                      .start,
+                                                              children: <
+                                                                  Widget>[
+                                                                Text(
+                                                                  todayExpenses
+                                                                      .elementAt(
+                                                                          position)
+                                                                      .type,
+                                                                  style: TextStyle(
+                                                                      fontSize:
+                                                                          16.0),
+                                                                ),
+                                                                SizedBox(
+                                                                  height: 8.0,
+                                                                ),
+                                                                Text(
+                                                                  todayExpenses
+                                                                      .elementAt(
+                                                                          position)
+                                                                      .description,
+                                                                  style: TextStyle(
+                                                                      color: Colors
+                                                                          .black26,
+                                                                      fontSize:
+                                                                          10.0),
+                                                                )
+                                                              ],
+                                                            ),
+                                                          )
+                                                        ],
+                                                      ),
+                                                      Padding(
+                                                        padding:
+                                                            EdgeInsets.only(
+                                                                top: 6.0),
+                                                        child: Text(
+                                                            "${todayExpenses.elementAt(position).amount} EGP"),
+                                                      )
+                                                    ],
+                                                  ),
+                                                );
+                                              },
+                                              itemCount: todayExpenses.length,
+                                            ),
+                                          ),
+                                        )
                                       ],
                                     ),
-                                  );
-                                },
-                                itemCount: todayExpenses.length,
+                                  ],
+                                ),
                               ),
-
+                              decoration: new BoxDecoration(boxShadow: [
+                                new BoxShadow(
+                                  color: Colors.black12,
+                                  blurRadius: 2.0,
+                                  offset: new Offset(0.0, 0.0),
+                                ),
+                              ]),
                             ),
-                          )
-                        ],),
+                          );
+                        },
+                        itemCount: weekExpenses.length,
+                      ),
                     ),
-                  ),)
-
+                  )
                 ],
               ),
             ),
           ),
-          Container(),
+
+
+
+          Container(
+            child: DefaultTabController(
+                length: 2,
+                child: Column(
+                  children: <Widget>[
+
+                    //tabs indicator
+                    Padding(
+                      padding: const EdgeInsets.all(1.0),
+                      child: new Container(
+                        margin: EdgeInsets.only(
+                            top: 30, bottom: 0.0, right: 60.0, left: 60.0),
+
+                        //the addition shadow handler
+                        child: new Card(
+                          color: Colors.white,
+                          margin: EdgeInsets.all(1.0),
+                          shape: new RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(4.0)),
+                          child: TabBar(
+                              indicatorPadding: EdgeInsets.all(50.0),
+                              labelColor: Colors.white,
+                              indicator: BoxDecoration(
+                                  color: Colors.black,
+                                  borderRadius: BorderRadius.circular(4.0)),
+                              indicatorColor: Colors.transparent,
+                              unselectedLabelColor: Colors.black,
+                              tabs: <Widget>[
+                                Tab(
+                                  text: "weekly",
+                                ),
+                                Tab(
+                                  text: "Monthly",
+                                )
+                              ]),
+                        ),
+                        decoration: new BoxDecoration(boxShadow: [
+                          new BoxShadow(
+                            color: Colors.black12,
+                            blurRadius: 2.0,
+                            offset: new Offset(0.0, 0.0),
+                          ),
+                        ]),
+                      ),
+                    ),
+
+                    //tabs content
+                    new Expanded(
+                        child: TabBarView(children: <Widget>[
+
+
+                          //months deatails container
+                      Container(
+                          child: Padding(
+                        padding: EdgeInsets.all(1.0),
+                        child: Container(
+                            child: ListView.builder(
+                          shrinkWrap: true,
+                          scrollDirection: Axis.vertical,
+                          itemBuilder: (context, position) {
+                            return Column(
+                              mainAxisSize: MainAxisSize.min,
+                              children: <Widget>[
+                                Padding(
+                                  padding: const EdgeInsets.all(1.0),
+                                  child: new Container(
+                                    margin: const EdgeInsets.only(
+                                        left: 20.0,
+                                        top: 20.0,
+                                        right: 20.0,
+                                        bottom: 0.0),
+
+                                    //Current date and time container
+                                    child: new Row(
+                                      mainAxisSize: MainAxisSize.max,
+                                      mainAxisAlignment:
+                                          MainAxisAlignment.spaceBetween,
+                                      children: <Widget>[
+                                        new Text(
+                                          "Hello",
+                                          textAlign: TextAlign.left,
+                                          style: new TextStyle(
+                                              color: Colors.black,
+                                              fontWeight: FontWeight.w500,
+                                              fontSize: 18.0),
+                                          textDirection: TextDirection.ltr,
+                                        ),
+                                        new Text(
+                                          "Hello",
+                                          textAlign: TextAlign.right,
+                                          style: new TextStyle(
+                                              color: Colors.black,
+                                              fontWeight: FontWeight.w500,
+                                              fontSize: 18.0),
+                                          textDirection: TextDirection.ltr,
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ),
+                                Padding(
+                                  padding: EdgeInsets.all(1.0),
+                                  child: new Container(
+                                    margin: const EdgeInsets.all(1.0),
+                                    //Current date and time container
+                                    child: ListView.builder(
+                                      scrollDirection: Axis.vertical,
+                                      shrinkWrap: true,
+                                      physics:
+                                          const NeverScrollableScrollPhysics(),
+                                      itemBuilder: (context, position) {
+                                        return Padding(
+                                          padding: const EdgeInsets.all(1.0),
+                                          child: new Container(
+                                            margin: EdgeInsets.only(
+                                                left: 20.0,
+                                                right: 20.0,
+                                                top: 20.0),
+
+                                            //the addition shadow handler
+                                            child: new Card(
+                                              color: Colors.white,
+                                              // the shadow size can be controled from the card margin value
+                                              margin: EdgeInsets.all(1.0),
+                                              shape: new RoundedRectangleBorder(
+                                                  borderRadius:
+                                                      BorderRadius.circular(
+                                                          4.0)),
+
+                                              //the addition form container
+                                              child: new Column(
+                                                mainAxisSize: MainAxisSize.min,
+                                                children: <Widget>[
+                                                  ConfigurableExpansionTile(
+                                                    header: SizedBox(
+                                                      height: 30.0,
+                                                      child: Padding(
+                                                        padding:
+                                                            const EdgeInsets
+                                                                .all(0.0),
+                                                        child: new Container(
+                                                          //Current date and time container
+                                                          child: new Row(
+                                                            mainAxisSize:
+                                                                MainAxisSize
+                                                                    .max,
+                                                            mainAxisAlignment:
+                                                                MainAxisAlignment
+                                                                    .spaceBetween,
+                                                            children: <Widget>[
+                                                              new Text(
+                                                                "Hello",
+                                                                textAlign:
+                                                                    TextAlign
+                                                                        .left,
+                                                                style: new TextStyle(
+                                                                    color: Colors
+                                                                        .black,
+                                                                    fontWeight:
+                                                                        FontWeight
+                                                                            .w500,
+                                                                    fontSize:
+                                                                        16.0),
+                                                                textDirection:
+                                                                    TextDirection
+                                                                        .ltr,
+                                                              ),
+                                                              SizedBox(
+                                                                width: 200.0,
+                                                              ),
+                                                              new Text(
+                                                                "Hello",
+                                                                textAlign:
+                                                                    TextAlign
+                                                                        .right,
+                                                                style: new TextStyle(
+                                                                    color: Colors
+                                                                        .black,
+                                                                    fontWeight:
+                                                                        FontWeight
+                                                                            .w500,
+                                                                    fontSize:
+                                                                        16.0),
+                                                                textDirection:
+                                                                    TextDirection
+                                                                        .ltr,
+                                                              ),
+                                                              Icon(Icons
+                                                                  .arrow_drop_down),
+                                                            ],
+                                                          ),
+                                                        ),
+                                                      ),
+                                                    ),
+                                                    children: <Widget>[
+                                                      Container(
+                                                        child: Padding(
+                                                          padding:
+                                                              EdgeInsets.only(
+                                                                  left: 12.0,
+                                                                  right: 12.0),
+                                                          child:
+                                                              ListView.builder(
+                                                            scrollDirection:
+                                                                Axis.vertical,
+                                                            shrinkWrap: true,
+                                                            physics:
+                                                                NeverScrollableScrollPhysics(),
+                                                            itemBuilder:
+                                                                (context,
+                                                                    position) {
+                                                              return new Card(
+                                                                margin: EdgeInsets
+                                                                    .only(
+                                                                        bottom:
+                                                                            12.0),
+                                                                elevation: 0.0,
+                                                                child: Row(
+                                                                  mainAxisSize:
+                                                                      MainAxisSize
+                                                                          .max,
+                                                                  mainAxisAlignment:
+                                                                      MainAxisAlignment
+                                                                          .spaceBetween,
+                                                                  crossAxisAlignment:
+                                                                      CrossAxisAlignment
+                                                                          .start,
+                                                                  children: <
+                                                                      Widget>[
+                                                                    Row(
+                                                                      mainAxisSize:
+                                                                          MainAxisSize
+                                                                              .min,
+                                                                      mainAxisAlignment:
+                                                                          MainAxisAlignment
+                                                                              .center,
+                                                                      crossAxisAlignment:
+                                                                          CrossAxisAlignment
+                                                                              .start,
+                                                                      children: <
+                                                                          Widget>[
+                                                                        Padding(
+                                                                          padding:
+                                                                              EdgeInsets.only(right: 8.0),
+                                                                          child:
+                                                                              SizedBox(
+                                                                            child:
+                                                                                Icon(
+                                                                              typesIcons[todayExpenses.elementAt(position).type],
+                                                                              size: 36.0,
+                                                                            ),
+                                                                          ),
+                                                                        ),
+                                                                        Padding(
+                                                                          padding:
+                                                                              EdgeInsets.only(top: 4.0),
+                                                                          child:
+                                                                              Column(
+                                                                            mainAxisSize:
+                                                                                MainAxisSize.min,
+                                                                            crossAxisAlignment:
+                                                                                CrossAxisAlignment.start,
+                                                                            children: <Widget>[
+                                                                              Text(
+                                                                                todayExpenses.elementAt(position).type,
+                                                                                style: TextStyle(fontSize: 16.0),
+                                                                              ),
+                                                                              SizedBox(
+                                                                                height: 8.0,
+                                                                              ),
+                                                                              Text(
+                                                                                todayExpenses.elementAt(position).description,
+                                                                                style: TextStyle(color: Colors.black26, fontSize: 10.0),
+                                                                              )
+                                                                            ],
+                                                                          ),
+                                                                        )
+                                                                      ],
+                                                                    ),
+                                                                    Padding(
+                                                                      padding: EdgeInsets
+                                                                          .only(
+                                                                              top: 6.0),
+                                                                      child: Text(
+                                                                          "${todayExpenses.elementAt(position).amount} EGP"),
+                                                                    )
+                                                                  ],
+                                                                ),
+                                                              );
+                                                            },
+                                                            itemCount:
+                                                                todayExpenses
+                                                                    .length,
+                                                          ),
+                                                        ),
+                                                      )
+                                                    ],
+                                                  ),
+                                                ],
+                                              ),
+                                            ),
+                                            decoration:
+                                                new BoxDecoration(boxShadow: [
+                                              new BoxShadow(
+                                                color: Colors.black12,
+                                                blurRadius: 2.0,
+                                                offset: new Offset(0.0, 0.0),
+                                              ),
+                                            ]),
+                                          ),
+                                        );
+                                      },
+                                      itemCount: weeksExpenses.length,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            );
+                          },
+                          itemCount: monthExpensesDetails.length,
+                        )),
+                      )),
+
+                      //year container
+                      Container(
+                        child: SingleChildScrollView(
+                          child: new Column(
+                            children: <Widget>[
+                              //year total
+                              Padding(
+                                padding: const EdgeInsets.all(1.0),
+                                child: new Container(
+                                  margin: const EdgeInsets.only(
+                                      left: 20.0,
+                                      top: 20.0,
+                                      right: 20.0,
+                                      bottom: 0.0),
+
+                                  //Current date and time container
+                                  child: new Row(
+                                    mainAxisSize: MainAxisSize.max,
+                                    mainAxisAlignment:
+                                        MainAxisAlignment.spaceBetween,
+                                    children: <Widget>[
+                                      new Text(
+                                        "Hello",
+                                        textAlign: TextAlign.left,
+                                        style: new TextStyle(
+                                            color: Colors.black,
+                                            fontWeight: FontWeight.w500,
+                                            fontSize: 18.0),
+                                        textDirection: TextDirection.ltr,
+                                      ),
+                                      new Text(
+                                        "Hello",
+                                        textAlign: TextAlign.right,
+                                        style: new TextStyle(
+                                            color: Colors.black,
+                                            fontWeight: FontWeight.w500,
+                                            fontSize: 18.0),
+                                        textDirection: TextDirection.ltr,
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ),
+
+                              // months expenses
+                              Padding(
+                                padding: EdgeInsets.all(1.0),
+                                child: new Container(
+                                  margin: const EdgeInsets.all(1.0),
+                                  //Current date and time container
+                                  child: ListView.builder(
+                                    scrollDirection: Axis.vertical,
+                                    shrinkWrap: true,
+                                    physics:
+                                        const NeverScrollableScrollPhysics(),
+                                    itemBuilder: (context, position) {
+                                      return Padding(
+                                        padding: const EdgeInsets.all(1.0),
+                                        child: new Container(
+                                          margin: EdgeInsets.only(
+                                              left: 20.0,
+                                              right: 20.0,
+                                              top: 20.0,
+                                              bottom: 0.0),
+
+                                          //the addition shadow handler
+                                          child: new Card(
+                                            color: Colors.white,
+                                            // the shadow size can be controled from the card margin value
+                                            margin: EdgeInsets.all(1.0),
+                                            shape: new RoundedRectangleBorder(
+                                                borderRadius:
+                                                    BorderRadius.circular(4.0)),
+
+                                            child: new Column(
+                                              mainAxisSize: MainAxisSize.max,
+                                              children: <Widget>[
+                                                ConfigurableExpansionTile(
+                                                  header: SizedBox(
+                                                    height: 30.0,
+                                                    child: Padding(
+                                                      padding:
+                                                          const EdgeInsets.all(
+                                                              0.0),
+                                                      child: new Container(
+                                                        //Current date and time container
+                                                        child: new Row(
+                                                          mainAxisSize:
+                                                              MainAxisSize.max,
+                                                          mainAxisAlignment:
+                                                              MainAxisAlignment
+                                                                  .spaceBetween,
+                                                          children: <Widget>[
+                                                            new Text(
+                                                              "Hello",
+                                                              textAlign:
+                                                                  TextAlign
+                                                                      .left,
+                                                              style: new TextStyle(
+                                                                  color: Colors
+                                                                      .black,
+                                                                  fontWeight:
+                                                                      FontWeight
+                                                                          .w500,
+                                                                  fontSize:
+                                                                      16.0),
+                                                              textDirection:
+                                                                  TextDirection
+                                                                      .ltr,
+                                                            ),
+                                                            SizedBox(
+                                                              width: 200.0,
+                                                            ),
+                                                            new Text(
+                                                              "Hello",
+                                                              textAlign:
+                                                                  TextAlign
+                                                                      .right,
+                                                              style: new TextStyle(
+                                                                  color: Colors
+                                                                      .black,
+                                                                  fontWeight:
+                                                                      FontWeight
+                                                                          .w500,
+                                                                  fontSize:
+                                                                      16.0),
+                                                              textDirection:
+                                                                  TextDirection
+                                                                      .ltr,
+                                                            ),
+                                                            Icon(Icons
+                                                                .arrow_drop_down),
+                                                          ],
+                                                        ),
+                                                      ),
+                                                    ),
+                                                  ),
+                                                  children: <Widget>[
+                                                    Container(
+                                                      child: Padding(
+                                                        padding:
+                                                            EdgeInsets.only(
+                                                                left: 12.0,
+                                                                right: 12.0),
+                                                        child: ListView.builder(
+                                                          scrollDirection:
+                                                              Axis.vertical,
+                                                          shrinkWrap: true,
+                                                          physics:
+                                                              NeverScrollableScrollPhysics(),
+                                                          itemBuilder: (context,
+                                                              position) {
+                                                            return new Card(
+                                                              margin: EdgeInsets
+                                                                  .only(
+                                                                      bottom:
+                                                                          12.0),
+                                                              elevation: 0.0,
+                                                              child: Row(
+                                                                mainAxisSize:
+                                                                    MainAxisSize
+                                                                        .max,
+                                                                mainAxisAlignment:
+                                                                    MainAxisAlignment
+                                                                        .spaceBetween,
+                                                                crossAxisAlignment:
+                                                                    CrossAxisAlignment
+                                                                        .start,
+                                                                children: <
+                                                                    Widget>[
+                                                                  Row(
+                                                                    mainAxisSize:
+                                                                        MainAxisSize
+                                                                            .min,
+                                                                    mainAxisAlignment:
+                                                                        MainAxisAlignment
+                                                                            .center,
+                                                                    crossAxisAlignment:
+                                                                        CrossAxisAlignment
+                                                                            .start,
+                                                                    children: <
+                                                                        Widget>[
+                                                                      Padding(
+                                                                        padding:
+                                                                            EdgeInsets.only(right: 8.0),
+                                                                        child:
+                                                                            SizedBox(
+                                                                          child:
+                                                                              Icon(
+                                                                            typesIcons[todayExpenses.elementAt(position).type],
+                                                                            size:
+                                                                                36.0,
+                                                                          ),
+                                                                        ),
+                                                                      ),
+                                                                      Padding(
+                                                                        padding:
+                                                                            EdgeInsets.only(top: 4.0),
+                                                                        child:
+                                                                            Column(
+                                                                          mainAxisSize:
+                                                                              MainAxisSize.max,
+                                                                          mainAxisAlignment:
+                                                                              MainAxisAlignment.spaceBetween,
+                                                                          crossAxisAlignment:
+                                                                              CrossAxisAlignment.start,
+                                                                          children: <
+                                                                              Widget>[
+                                                                            Text(
+                                                                              todayExpenses.elementAt(position).type,
+                                                                              style: TextStyle(fontSize: 16.0),
+                                                                            ),
+                                                                            SizedBox(
+                                                                              height: 8.0,
+                                                                            ),
+                                                                            Text(
+                                                                              todayExpenses.elementAt(position).description,
+                                                                              style: TextStyle(color: Colors.black26, fontSize: 10.0),
+                                                                            )
+                                                                          ],
+                                                                        ),
+                                                                      )
+                                                                    ],
+                                                                  ),
+                                                                  Padding(
+                                                                    padding: EdgeInsets
+                                                                        .only(
+                                                                            top:
+                                                                                6.0),
+                                                                    child: Text(
+                                                                        "${todayExpenses.elementAt(position).amount} EGP"),
+                                                                  )
+                                                                ],
+                                                              ),
+                                                            );
+                                                          },
+                                                          itemCount:
+                                                              todayExpenses
+                                                                  .length,
+                                                        ),
+                                                      ),
+                                                    )
+                                                  ],
+                                                ),
+                                              ],
+                                            ),
+                                          ),
+                                          decoration:
+                                              new BoxDecoration(boxShadow: [
+                                            new BoxShadow(
+                                              color: Colors.black12,
+                                              blurRadius: 2.0,
+                                              offset: new Offset(0.0, 0.0),
+                                            ),
+                                          ]),
+                                        ),
+                                      );
+                                    },
+                                    itemCount: yearExpenses.length,
+                                  ),
+                                ),
+                              )
+                            ],
+                          ),
+                        ),
+                      ),
+                    ]))
+                  ],
+                )),
+          ),
         ]),
       ),
     );
+    },
+    future: _query(),
+    );
+  }
+  void _insert() async {
+    formattedDate = intl.DateFormat('yyyyMMdd').format(now);
+    print("$formattedDate");
+    // row to insert
+    Map<String, dynamic> row = {
+      DatabaseHelper.columnPrice : priceInput,
+      DatabaseHelper.columnType  : Drop_value.expType,
+      DatabaseHelper.columnDescription : descriptionInput,
+      DatabaseHelper.columnDate : formattedDate.toString()
+    };
+    final id = await dbHelper.insert(row);
+    print('inserted row id: $id');
+
+    todayExpenses.clear();
+    weekExpenses.clear();
+    setState(() {
+
+    });
+  }
+  
+  Future _query() async {
+    
+    allRecords = await dbHelper.getAll();
+    allRecords.forEach((element){
+      allExpenses.add(ExpenseData.fromJson(element));
+      if(allExpenses.elementAt(allExpenses.length-1).dateTime == DateTime.parse(intl.DateFormat('yyyyMMdd').format(now))){
+        todayExpenses.add(ExpenseData.fromJson(element));
+      }
+      for(int i = allExpenses.length-1;(i>0&&allExpenses.elementAt(i).dateTime.difference(DateTime.parse(intl.DateFormat('yyyyMMdd').format(now))).inDays<7);i--){
+        if(!weekExpenses.contains(allExpenses.elementAt(i).dateTime))
+        weekExpenses.add(allExpenses.elementAt(i).dateTime);
+      }
+    });
   }
 }
